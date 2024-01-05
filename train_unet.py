@@ -59,8 +59,8 @@ def main():
     # dataset
     data = ds.UltrasoundDataset()
     train, test = du.random_split(data, [3600, 900])
-    train_loader = du.DataLoader(train, batch_size=100, shuffle=True)
-    test_loader = du.DataLoader(test, batch_size=100, shuffle=True)
+    train_loader = du.DataLoader(train, batch_size=100, shuffle=True, num_workers=12)
+    test_loader = du.DataLoader(test, batch_size=100, shuffle=True, num_workers=12)
 
     # build model
     lr = 1e-3
@@ -74,7 +74,7 @@ def main():
         test_model(model, device, test_loader, loss_fn)
 
     curr_time = datetime.now().strftime("%m-%d-%Y_%H:%M:%S")
-    # torch.save(model.state_dict(), f"models/unet_{curr_time}.pt")
+    torch.save(model.state_dict(), f"models/unet_{curr_time}.pt")
 
 
 if __name__ == "__main__":
