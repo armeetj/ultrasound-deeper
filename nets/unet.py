@@ -42,7 +42,7 @@ class decoder_block(nn.Module):
         x = self.conv(x)
         return x
 
-class Net(nn.Module):
+class Net1(nn.Module):
     def __init__(self):
         super().__init__()
         # encoders
@@ -81,14 +81,55 @@ class Net(nn.Module):
         out = out.squeeze()
         out = F.pad(out, (0, 1), "constant", 0)
         
-        # out = u1
         return out
-def build():
-    return Net()
+
+class Net2(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # encoders
+        self.e1 = encoder_block(1, 64)
+        self.e2 = encoder_block(64, 128)
+        self.e3 = encoder_block(128, 256)
+        
+        # bottleneck
+        self.b = conv_block(256, 512)
+        
+        # decoders
+        self.d1 = decoder_block(512, 256)
+        self.d2 = decoder_block(256, 128)
+        self.d3 = decoder_block(128, 64)
+        
+        # output
+        self.o1 = nn.Conv2d(64, 1, kernel_size=1)
+        self.o2 = nn.AvgPool2d(2, stride=2)
+        self.o3 = nn.AvgPool1d(2, stride=2)
+    
+    def forward(self, x):
+        # encoder blocks
+        s1, p1 = self.e1(x)
+        s2, p2 = self.e2(p1)
+        s3, p3 = self.e3(p2)
+        
+        # bottleneck
+        b = self.b(p3)
+        # decoder blocks
+        u1 = self.d1(b, s3)
+        u2 = self.d2(u1, s2)
+        u3 = self.d3(u2, s1)
+        
+        # output
+        out = self.o1(u3)
+        out = self.o2(out)
+        out = out.flatten(2)
+        out = self.o3(out)
+        out = out.squeeze()
+        out = F.pad(out, (0, 1), "constant", 0)
+        
+        return out
 
 if __name__ == "__main__":
     device = torch.device("cuda")
     x = torch.rand([10, 1, 64, 128]).to(device)
-    model = Net().to(device)
+    model = Net2().to(device)
     res = model(x)
     print("output:", res.shape)
