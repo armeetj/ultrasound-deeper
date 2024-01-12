@@ -1,1 +1,4 @@
 models/
+metrics/
+.ipynb_checkpoints
+__pycache__
