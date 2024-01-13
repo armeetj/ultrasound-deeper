@@ -183,6 +183,66 @@ class Net4(nn.Module):
         return out
 
 
+class Net2d_1(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # metadata
+        self.id = "unet2d-1"
+
+        # encoders
+        self.enc1 = encoder_block(1, 64)
+        self.enc2 = encoder_block(64, 128)
+        self.enc3 = encoder_block(128, 256)
+        self.enc4 = encoder_block(256, 512)
+
+        # bottleneck
+        self.bottleneck = conv_block(512, 1024)
+
+        # decoders
+        self.dec1 = decoder_block(1024, 512)
+        self.dec2 = decoder_block(512, 256)
+        self.dec3 = decoder_block(256, 128)
+        self.dec4 = decoder_block(128, 64)
+
+        # output
+        self.o1 = nn.Conv2d(64, 1, kernel_size=1)
+        self.o2 = nn.AvgPool2d(4, stride=4)
+        self.o3 = nn.AvgPool2d(4, stride=4)
+        # self.o4 = nn.AvgPool2d(2, stride=2)
+
+        # flatten and activation
+        self.flatten = nn.Flatten(2)
+        self.linear = nn.Linear(1024, 1025)
+        self.activate = nn.Sigmoid()
+
+    def forward(self, x):
+        # down
+        s1, p1 = self.enc1(x)
+        s2, p2 = self.enc2(p1)
+        s3, p3 = self.enc3(p2)
+        s4, p4 = self.enc4(p3)
+
+        # bottle
+        b = self.bottleneck(p4)
+
+        # up
+        u1 = self.dec1(b, s4)
+        u2 = self.dec2(u1, s3)
+        u3 = self.dec3(u2, s2)
+        u4 = self.dec4(u3, s1)
+
+        out = self.o1(u4)
+        out = self.o2(out)
+        out = self.o3(out)
+        # out = self.o4(out)
+
+        out = self.flatten(out)
+        out = self.linear(out)
+        out = self.activate(out)
+
+        return out
+
+
 class conv3d_block(nn.Module):
     def __init__(self, in_c, out_c):
         super().__init__()
@@ -287,63 +347,65 @@ class Net3d_2(nn.Module):
         # metadata
         self.id = "unet-3d-2"
 
-        self.avg = nn.AvgPool3d(kernel_size=(8, 1, 1))
+        self.avg = nn.AvgPool3d(kernel_size=(4, 1, 1))
 
         # encoders
         self.e1 = encoder3d_block(1, 64)
         self.e2 = encoder3d_block(64, 128)
-        self.e3 = encoder3d_block(128, 256)
 
         # bottleneck
-        self.b = conv3d_block(256, 512)
+        self.b = conv3d_block(128, 256)
 
         # decoders
-        self.d1 = decoder3d_block(512, 256)
-        self.d2 = decoder3d_block(256, 128)
-        self.d3 = decoder3d_block(128, 64)
+        self.d1 = decoder3d_block(256, 128)
+        self.d2 = decoder3d_block(128, 64)
 
         # output
         self.o1 = nn.Conv3d(64, 1, kernel_size=4, stride=4)
         self.o2 = nn.AvgPool3d(kernel_size=(8, 2, 2))
         self.o3 = nn.Flatten(start_dim=2)
-        self.o4 = nn.Linear(1024, 1025)
+        self.o4 = nn.Linear(1408, 1025)
 
     def forward(self, x):
         x = self.avg(x)
 
         s1, p1 = self.e1(x)
         s2, p2 = self.e2(p1)
-        s3, p3 = self.e3(p2)
 
-        b = self.b(p3)
+        b = self.b(p2)
 
-        u1 = self.d1(b, s3)
-        u2 = self.d2(u1, s2)
-        u3 = self.d3(u2, s1)
+        u1 = self.d1(b, s2)
+        s1 = s1[:, :, :376, :, :]
+        u2 = self.d2(u1, s1)
 
-        out = self.o1(u3)
+        out = self.o1(u2)
         out = F.relu(out)
         out = self.o2(out)
         out = F.relu(out)
         out = self.o3(out).squeeze(0)
         out = F.relu(out)
         out = self.o4(out)
-        out = out
+        out = F.sigmoid(out)
         return out
 
 
 if __name__ == "__main__":
     device = torch.device("cuda")
+    torch.manual_seed(0)
+    
     """
     2d unets:
-    batch_size=10
+    batch_size=16
     num_channels=1
     (64 x 128)
     """
-    # x = torch.rand([10, 1024, 64, 128]).to(device)
-    # model = Net1().to(device)
-    # res = model(x)
-    # print("output:", res.shape)
+    x = torch.rand([16, 1, 512, 512]).to(device)
+    y = torch.rand(16, 1, 1025).to(device)
+    model = Net2d_1().to(device)
+    res = model(x)
+    print("output:", res.shape)
+    print(y.shape, res.shape)
+    print(F.l1_loss(y, res))
 
     """ 
     3d unets:
@@ -351,7 +413,7 @@ if __name__ == "__main__":
     num_channels=1
     (1024 x 64 x 128)
     """
-    x = torch.rand([1, 1, 1024, 64, 128]).to(device)
-    model = Net3d_1().to(device)
-    res = model(x)
-    print("output:", res.shape)
+    # x = torch.rand([1, 1, 1509, 64, 128]).to(device)
+    # model = Net3d_2().to(device)
+    # res = model(x)
+    # print("output:", res.shape)

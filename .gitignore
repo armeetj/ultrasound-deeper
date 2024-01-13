@@ -1,4 +1,5 @@
-metrics
+metrics/
 models/
+wandb/
 **/.ipynb_checkpoints
 **/__pycache__

@@ -10,6 +10,9 @@ from colorama import Fore, Back, Style
 import pickle
 import os
 import wandb
+import argparse
+
+args = None
 
 
 def get_device():
@@ -51,30 +54,34 @@ def load_checkpoint(model, path):
     print(f"{Fore.MAGENTA}Loaded checkpoint: {path}{Fore.RESET}")
 
 
-def l1_acc(y, y_pred):
-    batch_size, N = y.shape
-    acc_avg = 0
-
-    for target, pred in zip(y.squeeze(), y_pred.squeeze()):
-        acc_avg += torch.abs(target - pred) / target
-    return 1 - acc_avg / N
+def acc_fn(y, y_pred):
+    abs_percent_err = torch.abs((y - y_pred) / y)
+    avg_percent_err = torch.mean(abs_percent_err, dim=1)
+    batch_avg_percent_err = torch.mean(avg_percent_err)
+    return 1 - batch_avg_percent_err
 
 
 def train_model(model, device, loader, loss_fn, optimizer):
     model.train()
     with tqdm.tqdm(loader) as pbar:
+        i = 0
         for x, y in pbar:
+            i += 1
             # move data to device
             x, y = x.to(device), y.to(device)
 
-            # forward pass
+            # zero grad
             optimizer.zero_grad()
+
+            # forward pass
             y_pred = model(x)
 
             # backward pass
             loss = loss_fn(y, y_pred)
-            acc = l1_acc(y, y_pred)
-            wandb.log({"train_loss": loss, "train_acc": acc})
+            acc = acc_fn(y, y_pred)
+            # if args.wandb and i % (0.01 * y.shape[1]) == 0:
+            if args.wandb:
+                wandb.log({"train_loss": loss, "train_acc": acc})
             loss.backward()
             optimizer.step()
 
@@ -95,7 +102,7 @@ def test_model(model, device, loader, loss_fn):
             count += 1
             x, y = x.to(device), y.to(device)
             y_pred = model(x)
-            test_acc += l1_acc(y, y_pred).item()
+            test_acc += acc_fn(y, y_pred).item()
             loss = loss_fn(y_pred, y)
             test_loss += loss.item()
     test_loss /= count
@@ -106,16 +113,18 @@ def test_model(model, device, loader, loss_fn):
     return test_loss, test_acc
 
 
-def main(time_str, data, device, model, hyperparams, optimizer, loss_fn):
+def main(time_str, data, device, model, optimizer, loss_fn):
     # prepare dataset and loaders
     train, test = du.random_split(data, [3600, 900])
-    train_loader = du.DataLoader(train, batch_size=1, shuffle=True, num_workers=12)
-    test_loader = du.DataLoader(test, batch_size=1, shuffle=True, num_workers=12)
+    train_loader = du.DataLoader(train, batch_size=16, shuffle=True, num_workers=12)
+    test_loader = du.DataLoader(test, batch_size=16, shuffle=True, num_workers=12)
 
     metrics_train_loss, metrics_test_loss = list(), list()
     metrics = [metrics_train_loss, metrics_test_loss]
 
-    print(f"Training started: model={model.id}, epochs={epochs}")
+    print(
+        f"Training started @ {time_str}:\n\tmodel={model.id}, \n\tepochs={epochs}, \n\toptimizer={optimizer}, \n\tloss_fn={loss_fn}"
+    )
 
     for epoch in tqdm.trange(
         1, epochs + 1, desc=f"{Fore.GREEN}[epoch]{Fore.RESET}{Back.RESET}"
@@ -128,54 +137,79 @@ def main(time_str, data, device, model, hyperparams, optimizer, loss_fn):
         metrics_test_loss.append((test_loss, test_acc))
         save_checkpoint(model, f"models/{model.id}_{time_str}", f"cp-{epoch}.pt")
         save_metrics(metrics, f"metrics/{model.id}_{time_str}", "metrics.pkl")
-        wandb.log(
-            {
-                "train_loss_epoch": train_loss,
-                "train_acc_epoch": train_acc,
-                "test_loss_epoch": test_loss,
-                "test_acc_epoch": test_acc,
-            }
-        )
+        if args.wandb:
+            wandb.log(
+                {
+                    "train_loss_epoch": train_loss,
+                    "train_acc_epoch": train_acc,
+                    "test_loss_epoch": test_loss,
+                    "test_acc_epoch": test_acc,
+                }
+            )
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Train nets in ./nets/**")
+
+    parser.add_argument(
+        "--wandb",
+        action="store_true",
+        help="Enable logging with Weights and Biases (wandb)",
+    )
+
+    parser.add_argument(
+        "-d",
+        "--device",
+        choices=["auto", "cuda", "mps", "cpu"],
+        default="auto",
+        help="Choose acceleration backend device (cuda, mps = gpu)",
+    )
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
+    # parse script args
+    args = parse_arguments()
+
     # set random seed
     seed = 53252
     torch.manual_seed(seed)
 
     # load dataset and device
     time_str = get_formatted_time()
-    data = ds.CutUltrasoundDataset()
-    device = get_device()
+    data = ds.ReducedUltrasoundDataset()
+    device = args.device if args.device != "auto" else get_device()
 
     # load model and checkpoints
     checkpoint_path = None
-    model = unet.Net3d_1().to(device)
+    model = unet.Net2d_1().to(device)
     if checkpoint_path:
         load_checkpoint(model, checkpoint_path)
 
     # hyperparams
-    lr: 1e-5
-    epochs = 50
+    lr = 1e-10
+    epochs = 20
 
     # optimizer and loss func
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    loss_fn = nn.L1Loss()
 
-    wandb.init(
-        project="ultrasound-trial-1d",
-        config={
-            "seed": seed,
-            "time": time_str,
-            "model_id": model.id,
-            "ds_id": data.id,
-            "device": device,
-            "checkpoint_path": checkpoint_path,
-            "lr": lr,
-            "epochs": epochs,
-            "optimizer": optimizer,
-            "loss_fn": loss_fn,
-        },
-    )
-    main(time_str, data, device, model, {lr, epochs}, optimizer, loss_fn)
-    wandb.finish()
+    loss_fn = nn.L1Loss(reduction="mean")
+    if args.wandb:
+        wandb.init(
+            project="ultrasound-trial-1d",
+            config={
+                "seed": seed,
+                "time": time_str,
+                "model_id": model.id,
+                "ds_id": data.id,
+                "device": device,
+                "checkpoint_path": checkpoint_path,
+                "lr": lr,
+                "epochs": epochs,
+                "optimizer": optimizer,
+                "loss_fn": loss_fn,
+            },
+        )
+    main(time_str, data, device, model, optimizer, loss_fn)
+    if args.wandb:
+        wandb.finish()
