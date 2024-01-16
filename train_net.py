@@ -1,5 +1,5 @@
 import tqdm
-from nets import unet, dense
+from nets import unet, dense, cnn
 import cdatasets as ds
 import torch
 import torch.nn as nn
@@ -12,6 +12,7 @@ import os
 import wandb
 import argparse
 
+seed = 53252
 args = None
 
 
@@ -54,7 +55,7 @@ def load_checkpoint(model, path):
     print(f"{Fore.MAGENTA}Loaded checkpoint: {path}{Fore.RESET}")
 
 
-def acc_fn(y, y_pred):
+def acc_fn(y_pred, y):
     abs_percent_err = torch.abs((y - y_pred) / y)
     avg_percent_err = torch.mean(abs_percent_err, dim=1)
     batch_avg_percent_err = torch.mean(avg_percent_err)
@@ -77,8 +78,8 @@ def train_model(model, device, loader, loss_fn, optimizer):
             y_pred = model(x)
 
             # backward pass
-            loss = loss_fn(y, y_pred)
-            acc = acc_fn(y, y_pred)
+            loss = loss_fn(y_pred, y)
+            acc = acc_fn(y_pred, y) # TODO: uncomment
             # if args.wandb and i % (0.01 * y.shape[1]) == 0:
             if args.wandb:
                 wandb.log({"train_loss": loss, "train_acc": acc})
@@ -102,7 +103,7 @@ def test_model(model, device, loader, loss_fn):
             count += 1
             x, y = x.to(device), y.to(device)
             y_pred = model(x)
-            test_acc += acc_fn(y, y_pred).item()
+            test_acc += acc_fn(y, y_pred).item() # TODO: figure this out
             loss = loss_fn(y_pred, y)
             test_loss += loss.item()
     test_loss /= count
@@ -115,9 +116,10 @@ def test_model(model, device, loader, loss_fn):
 
 def main(time_str, data, device, model, optimizer, loss_fn):
     # prepare dataset and loaders
-    train, test = du.random_split(data, [3600, 900])
-    train_loader = du.DataLoader(train, batch_size=16, shuffle=True, num_workers=12)
-    test_loader = du.DataLoader(test, batch_size=16, shuffle=True, num_workers=12)
+    generator = torch.Generator().manual_seed(seed)
+    train, test = du.random_split(data, [3600, 900], generator)
+    train_loader = du.DataLoader(train, batch_size=1, shuffle=True, num_workers=12)
+    test_loader = du.DataLoader(test, batch_size=1, shuffle=True, num_workers=12)
 
     metrics_train_loss, metrics_test_loss = list(), list()
     metrics = [metrics_train_loss, metrics_test_loss]
@@ -172,28 +174,27 @@ if __name__ == "__main__":
     args = parse_arguments()
 
     # set random seed
-    seed = 53252
     torch.manual_seed(seed)
 
     # load dataset and device
     time_str = get_formatted_time()
-    data = ds.ReducedUltrasoundDataset()
+    data = ds.UltrasoundDataset()
     device = args.device if args.device != "auto" else get_device()
 
     # load model and checkpoints
-    checkpoint_path = None
-    model = unet.Net2d_1().to(device)
+    checkpoint_path = "/home/shared/armeet/ultrasound/models/unet-3d-1_01-15-2024_17:34:53/cp-2.pt"
+    model = unet.Net3d_1().to(device)
     if checkpoint_path:
         load_checkpoint(model, checkpoint_path)
 
     # hyperparams
     lr = 1e-10
-    epochs = 20
+    epochs = 50
 
     # optimizer and loss func
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-
     loss_fn = nn.L1Loss(reduction="mean")
+
     if args.wandb:
         wandb.init(
             project="ultrasound-trial-1d",

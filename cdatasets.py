@@ -2,11 +2,11 @@ import torch
 from torch.utils.data import Dataset
 import torch.nn.functional as F
 
-
 class UltrasoundDataset(Dataset):
     """Ultrasound RF Dataset"""
 
     def __init__(self):
+        self.id = "og-ynorm-t1024"
         self.in_path = "/home/peter/data/split"
         self.y = torch.load("/home/peter/data/split/aeration1.pt") / 100.0
 
@@ -77,6 +77,31 @@ class ReducedUltrasoundDataset(Dataset):
         x = F.avg_pool3d(x, (2, 4, 4))
         x = x.flatten(2)
         return x, y
+    
+class UltrasoundDataset1024x512(Dataset):
+    """Ultrasound RF Dataset"""
+
+    def __init__(self):
+        self.id = "1024x512-norm"
+        self.in_path = "/home/peter/data/split"
+        self.y = torch.load("/home/peter/data/split/aeration1.pt") / 100.0
+
+    def __len__(self):
+        return self.y.shape[0]
+
+    def __getitem__(self, index):
+        if index not in range(len(self)):
+            raise IndexError(
+                f"Invalid index: {index}, Indices must be in {range(len(self))}"
+            )
+        x, y = (
+            torch.load(f"{self.in_path}/RF_{str(index)}.pt")[:1024, :, :] / 30000.0,
+            self.y[index],
+        )
+        x, y = x.unsqueeze(0), y.unsqueeze(0)
+        x = F.avg_pool3d(x, (1, 4, 4))
+        x = x.flatten(2)
+        return x, y
 
 
 class CutUltrasoundDataset(Dataset):
@@ -103,10 +128,27 @@ class CutUltrasoundDataset(Dataset):
         x = x.unsqueeze(0)
         # x = F.normalize(x)
         return x, y
+    
+class SineDataset(Dataset):
+    """
+    For testing purposes
+    Used to test train_net training loop
+    """
+
+    def __init__(self):
+        self.id = "sin-wave"
+
+    def __len__(self):
+        return 2000
+
+    def __getitem__(self, index):
+        x = torch.rand((1,))
+        y = torch.sin(x)
+        return x, y
 
 
 if __name__ == "__main__":
     print("loading Ultrasound Dataset...")
-    ds_ultrasound = ReducedUltrasoundDataset()
+    ds_ultrasound = UltrasoundDataset1024x512()
     x, y = ds_ultrasound[1000]
     print(f"x, y: {x.shape}, {y.shape}")
