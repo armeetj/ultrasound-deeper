@@ -240,7 +240,8 @@ class Net2d_1(nn.Module):
         out = self.activate(out)
 
         return out
-    
+
+
 class Net2d_2(nn.Module):
     def __init__(self):
         super().__init__()
@@ -304,7 +305,11 @@ class conv3d_block(nn.Module):
         super().__init__()
 
         self.c1 = nn.Conv3d(in_c, out_c // 2, kernel_size=3, padding="same")
+        self.bn1 = nn.BatchNorm3d(out_c // 2)
+
         self.c2 = nn.Conv3d(out_c // 2, out_c, kernel_size=3, padding="same")
+        self.bn2 = nn.BatchNorm3d(out_c)
+
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -389,7 +394,6 @@ class Net3d_1(nn.Module):
         out = self.o3(out).squeeze(0)
         out = F.relu(out)
         out = self.o4(out)
-        out = out
         return out
 
 
@@ -427,7 +431,7 @@ class Net3d_2(nn.Module):
         b = self.b(p2)
 
         u1 = self.d1(b, s2)
-        s1 = s1[:, :, :376, :, :]
+        s1 = s1[:, :, :, :, :]
         u2 = self.d2(u1, s1)
 
         out = self.o1(u2)
@@ -441,19 +445,72 @@ class Net3d_2(nn.Module):
         return out
 
 
+class Net3d_3(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # metadata
+        self.id = "unet-3d-3"
+
+        self.avg = nn.AvgPool3d(kernel_size=(2, 1, 1))
+
+        # encoders
+        self.e1 = encoder3d_block(1, 64)
+        self.e2 = encoder3d_block(64, 128)
+
+        # bottleneck
+        self.b = conv3d_block(128, 256)
+
+        # decoders
+        self.d1 = decoder3d_block(256, 128)
+        self.d2 = decoder3d_block(128, 64)
+
+        # output
+        self.o1 = nn.Conv3d(64, 8, kernel_size=4, stride=4)
+        self.o2 = nn.Conv3d(8, 8, kernel_size=4, stride=4)
+        self.flatten = nn.Flatten(start_dim=1)
+
+        self.fc1 = nn.Linear(12032, 1025)
+
+    def forward(self, x):
+        x = self.avg(x)
+
+        s1, p1 = self.e1(x)
+        s2, p2 = self.e2(p1)
+
+        b = self.b(p2)
+
+        s2 = s2[:, :, :376, :, :]
+        u1 = self.d1(b, s2)
+        s1 = s1[:, :, :752, :, :]
+        u2 = self.d2(u1, s1)
+
+        out = self.o1(u2)
+        out = self.o2(out)
+
+        out = self.flatten(out)
+        out = self.fc1(out)
+        out = F.tanh(out)
+        return out
+
+
+def num_trainable_params(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 if __name__ == "__main__":
     device = torch.device("cuda")
     torch.manual_seed(0)
-    
+
     """
     2d unets:
     batch_size=16
     num_channels=1
     (64 x 128)
     """
-    # x = torch.rand([4, 1, 1024, 512]).to(device)
-    # y = torch.rand(4, 1, 1025).to(device)
-    # model = Net2d_2().to(device)
+    # x = torch.rand([16, 1, 1024, 512]).to(device)
+    # y = torch.rand(16, 1, 1025).to(device)
+    model = Net3d_3().to(device)
+    print(num_trainable_params(model))
     # res = model(x)
     # print("output:", res.shape)
     # print(y.shape, res.shape)
@@ -465,14 +522,8 @@ if __name__ == "__main__":
     num_channels=1
     (1024 x 64 x 128)
     """
-    x = torch.rand([1, 1, 1024, 64, 128]).to(device)
-    model = Net3d_1().to(device)
-    res = model(x)
-
-    trainable_params = sum(
-        p.numel() for p in model.parameters() if p.requires_grad
-    )
-    print(trainable_params)
-
-    # summary(model)
+    # x = torch.rand([1, 1, 1509, 64, 128]).to(device)
+    # model = Net3d_3().to(device)
+    # res = model(x)
+    # # print(model)
     # print("output:", res.shape)

@@ -49,7 +49,6 @@ class RawNormUltrasoundDataset(Dataset):
             self.y[index],
         )
         x = x.unsqueeze(0)
-        # x = F.normalize(x)
         return x, y
 
 

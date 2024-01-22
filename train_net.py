@@ -66,30 +66,30 @@ def train_model(model, device, loader, loss_fn, optimizer):
     model.train()
     with tqdm.tqdm(loader) as pbar:
         i = 0
+        optimizer.zero_grad()
         for x, y in pbar:
             i += 1
             # move data to device
             x, y = x.to(device), y.to(device)
-
-            # zero grad
-            optimizer.zero_grad()
 
             # forward pass
             y_pred = model(x)
 
             # backward pass
             loss = loss_fn(y_pred, y)
-            acc = acc_fn(y_pred, y) # TODO: uncomment
-            # if args.wandb and i % (0.01 * y.shape[1]) == 0:
-            if args.wandb:
-                wandb.log({"train_loss": loss, "train_acc": acc})
             loss.backward()
-            optimizer.step()
 
-            # log
-            pbar.set_description(
-                f"{Fore.YELLOW}[train_loss={str(loss.item())[:7]}, train_acc={str(acc.item())[:7]}]{Fore.RESET}{Back.RESET}"
-            )
+            if i % 2 == 0:
+                acc = acc_fn(y_pred, y)
+                optimizer.step()
+                optimizer.zero_grad()
+                if args.wandb:
+                    wandb.log({"train_loss": loss, "train_acc": acc})
+                # log
+                pbar.set_description(
+                    f"{Fore.YELLOW}[train_loss={str(loss.item())[:7]}, train_acc={str(acc.item())[:7]}]{Fore.RESET}{Back.RESET}"
+                )
+
     return loss.item(), acc.item()
 
 
@@ -118,8 +118,8 @@ def main(time_str, data, device, model, optimizer, loss_fn):
     # prepare dataset and loaders
     generator = torch.Generator().manual_seed(seed)
     train, test = du.random_split(data, [3600, 900], generator)
-    train_loader = du.DataLoader(train, batch_size=1, shuffle=True, num_workers=12)
-    test_loader = du.DataLoader(test, batch_size=1, shuffle=True, num_workers=12)
+    train_loader = du.DataLoader(train, batch_size=8, shuffle=True, num_workers=12)
+    test_loader = du.DataLoader(test, batch_size=8, shuffle=True, num_workers=12)
 
     metrics_train_loss, metrics_test_loss = list(), list()
     metrics = [metrics_train_loss, metrics_test_loss]
@@ -166,6 +166,13 @@ def parse_arguments():
         default="auto",
         help="Choose acceleration backend device (cuda, mps = gpu)",
     )
+
+    parser.add_argument(
+        "-cp",
+        "--checkpoint",
+        default=None,
+        help="path to .pth pytorch model weights dictionary"
+    )
     return parser.parse_args()
 
 
@@ -178,17 +185,19 @@ if __name__ == "__main__":
 
     # load dataset and device
     time_str = get_formatted_time()
-    data = ds.UltrasoundDataset()
+    data = ds.UltrasoundDataset1024x512()
     device = args.device if args.device != "auto" else get_device()
 
     # load model and checkpoints
-    checkpoint_path = "/home/shared/armeet/ultrasound/models/unet-3d-1_01-15-2024_17:34:53/cp-2.pt"
-    model = unet.Net3d_1().to(device)
+    checkpoint_path = None
+    if args.checkpoint != None:
+        checkpoint_path = args.checkpoint
+    model = unet.Net2d_2().to(device)
     if checkpoint_path:
         load_checkpoint(model, checkpoint_path)
 
     # hyperparams
-    lr = 1e-10
+    lr = 1e-4
     epochs = 50
 
     # optimizer and loss func
