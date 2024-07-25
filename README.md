@@ -1,6 +1,6 @@
 # ultrasound-deeper
 
-Reconstruction of lung images from ultrasound RF signal data. I designed and trained multiple architectures, ultimately increasing inference depth and improving on initial designs. I worked on this research project at the [Anima AI + Science Lab](http://tensorlab.cms.caltech.edu/users/anima/). I was mentored by [Dr. Jiayun Wang](http://pwang.pw/). Here I've scrapped together some preliminary results. They may not be up to date.
+Reconstruction of lung images from ultrasound RF signal data. I designed and trained multiple architectures, ultimately increasing inference depth and improving on initial designs. I worked on this research project at the [Anima AI + Science Lab](http://tensorlab.cms.caltech.edu/users/anima/). I was mentored by [Dr. Jiayun Wang](http://pwang.pw/).
 
 [proposal:pdf](https://github.com/user-attachments/files/16369650/surf_proposal_24.pdf)
 
