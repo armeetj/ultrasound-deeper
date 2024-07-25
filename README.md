@@ -1,6 +1,6 @@
 # ultrasound-deeper
 
-Reconstruction of lung images from ultrasound RF signal data. I designed and trained multiple architectures, ultimately increasing inference depth and improving on initial designs. I worked on this research project at the [Anima AI + Science Lab](http://tensorlab.cms.caltech.edu/users/anima/). I was mentored by [Dr. Jiayun Wang](http://pwang.pw/). Here I've scrapped together some early results.
+Reconstruction of lung images from ultrasound RF signal data. I designed and trained multiple architectures, ultimately increasing inference depth and improving on initial designs. I worked on this research project at the [Anima AI + Science Lab](http://tensorlab.cms.caltech.edu/users/anima/). I was mentored by [Dr. Jiayun Wang](http://pwang.pw/). Here I've scrapped together some preliminary results. They may not be up to date.
 
 ## Task
 The objective is to learn the mapping from radio frequency (RF) data to ultrasound images. The RF data has shape (time, num_transducers, num_receivers) (1509, 64, 128). At any given moment in time, this means 64 transducers emit a signal, and 128 transducers receive and record the signal. Each time sample RF[t, :, :] represents a "slice" of chest imaged. As time increases, we image _deeper_, past the chest wall and into the lung.
