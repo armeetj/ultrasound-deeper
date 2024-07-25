@@ -25,7 +25,7 @@ I implemented and trained a modified 3D U-Net to learn both spatial and temporal
   - 3x 2D U-Net architectures (2D slice training)
 - `nets.cnn.VGG16` an initial baseline with an antiquated approach (mostly a sanity test)
 - `nets.dense` various dense models (did not perform well)
-- next steps: explore ViT & diffusion architectures
+- next steps: explore ViT & diffusion architectures, SSL for large unlabeled data
 
 
 ## Results
